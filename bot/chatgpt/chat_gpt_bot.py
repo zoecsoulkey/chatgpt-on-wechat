@@ -107,60 +107,71 @@ class ChatGPTBot(Bot, OpenAIImage):
             return reply
 
     def reply_text(self, session: ChatGPTSession, api_key=None, args=None, retry_count=0) -> dict:
-        """
-        call openai's ChatCompletion to get the answer
-        :param session: a conversation session
-        :param session_id: session id
-        :param retry_count: retry count
-        :return: {}
-        """
-        try:
-            if conf().get("rate_limit_chatgpt") and not self.tb4chatgpt.get_token():
-                raise openai.error.RateLimitError("RateLimitError: rate limit exceeded")
-            # if api_key == None, the default openai.api_key will be used
-            if args is None:
-                args = self.args
-            response = openai.ChatCompletion.create(api_key=api_key, messages=session.messages, **args)
-            # logger.debug("[CHATGPT] response={}".format(response))
-            # logger.info("[ChatGPT] reply={}, total_tokens={}".format(response.choices[0]['message']['content'], response["usage"]["total_tokens"]))
-            return {
-                "total_tokens": response["usage"]["total_tokens"],
-                "completion_tokens": response["usage"]["completion_tokens"],
-                "content": response.choices[0]["message"]["content"],
-            }
-        except Exception as e:
-            need_retry = retry_count < 2
-            result = {"completion_tokens": 0, "content": "我现在有点累了，等会再来吧"}
-            if isinstance(e, openai.error.RateLimitError):
-                logger.warn("[CHATGPT] RateLimitError: {}".format(e))
-                result["content"] = "提问太快啦，请休息一下再问我吧"
-                if need_retry:
-                    time.sleep(20)
-            elif isinstance(e, openai.error.Timeout):
-                logger.warn("[CHATGPT] Timeout: {}".format(e))
-                result["content"] = "我没有收到你的消息"
-                if need_retry:
-                    time.sleep(5)
-            elif isinstance(e, openai.error.APIError):
-                logger.warn("[CHATGPT] Bad Gateway: {}".format(e))
-                result["content"] = "请再问我一次"
-                if need_retry:
-                    time.sleep(10)
-            elif isinstance(e, openai.error.APIConnectionError):
-                logger.warn("[CHATGPT] APIConnectionError: {}".format(e))
-                result["content"] = "我连接不到你的网络"
-                if need_retry:
-                    time.sleep(5)
-            else:
-                logger.exception("[CHATGPT] Exception: {}".format(e))
-                need_retry = False
-                self.sessions.clear_session(session.session_id)
+    """
+    Call OpenAI's ChatCompletion to get the answer.
+    :param session: a conversation session
+    :param session_id: session id
+    :param retry_count: retry count
+    :return: {}
+    """
+    try:
+        if conf().get("rate_limit_chatgpt") and not self.tb4chatgpt.get_token():
+            raise openai.error.RateLimitError("RateLimitError: rate limit exceeded")
+        # if api_key == None, the default openai.api_key will be used
+        if args is None:
+            args = self.args
+        response = openai.ChatCompletion.create(api_key=api_key, messages=session.messages, **args)
+        
+        # Handle possible absence of 'usage' in response
+        usage = response.get('usage', {'total_tokens': 0, 'completion_tokens': 0})
+        total_tokens = usage['total_tokens']
+        completion_tokens = usage['completion_tokens']
+        
+        # Ensure there's a 'choices' field and it's not empty
+        if 'choices' in response and response['choices']:
+            content = response['choices'][0].get('message', {}).get('content', '')
+        else:
+            content = "未能生成有效的回复内容"
 
+        return {
+            "total_tokens": total_tokens,
+            "completion_tokens": completion_tokens,
+            "content": content,
+        }
+
+    except Exception as e:
+        need_retry = retry_count < 2
+        result = {"completion_tokens": 0, "content": "我现在有点累了，等会再来吧"}
+        if isinstance(e, openai.error.RateLimitError):
+            logger.warn("[CHATGPT] RateLimitError: {}".format(e))
+            result["content"] = "提问太快啦，请休息一下再问我吧"
             if need_retry:
-                logger.warn("[CHATGPT] 第{}次重试".format(retry_count + 1))
-                return self.reply_text(session, api_key, args, retry_count + 1)
-            else:
-                return result
+                time.sleep(20)
+        elif isinstance(e, openai.error.Timeout):
+            logger.warn("[CHATGPT] Timeout: {}".format(e))
+            result["content"] = "我没有收到你的消息"
+            if need_retry:
+                time.sleep(5)
+        elif isinstance(e, openai.error.APIError):
+            logger.warn("[CHATGPT] Bad Gateway: {}".format(e))
+            result["content"] = "请再问我一次"
+            if need_retry:
+                time.sleep(10)
+        elif isinstance(e, openai.error.APIConnectionError):
+            logger.warn("[CHATGPT] APIConnectionError: {}".format(e))
+            result["content"] = "我连接不到你的网络"
+            if need_retry:
+                time.sleep(5)
+        else:
+            logger.exception("[CHATGPT] Exception: {}".format(e))
+            need_retry = False
+            self.sessions.clear_session(session.session_id)
+
+        if need_retry:
+            logger.warn("[CHATGPT] 第{}次重试".format(retry_count + 1))
+            return self.reply_text(session, api_key, args, retry_count + 1)
+        else:
+            return result
 
 
 class AzureChatGPTBot(ChatGPTBot):
