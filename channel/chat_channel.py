@@ -260,8 +260,12 @@ class ChatChannel(Channel):
                     else:
                         reply_text = conf().get("single_chat_reply_prefix", "") + reply_text + conf().get("single_chat_reply_suffix", "")
                     reply.content = reply_text
-                elif reply.type == ReplyType.ERROR or reply.type == ReplyType.INFO:
-                    reply.content = "[" + str(reply.type) + "]\n" + reply.content
+                elif reply.type == ReplyType.ERROR:
+                     # 不再添加任何前缀
+                      pass
+                elif reply.type == ReplyType.INFO:
+                     # 继续为 INFO 类型的回复添加标签，如果不需要也可以选择去掉
+                    reply.content = "[INFO]\n" + reply.content
                 elif reply.type == ReplyType.IMAGE_URL or reply.type == ReplyType.VOICE or reply.type == ReplyType.IMAGE or reply.type == ReplyType.FILE or reply.type == ReplyType.VIDEO or reply.type == ReplyType.VIDEO_URL:
                     pass
                 else:
